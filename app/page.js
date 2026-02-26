@@ -1,19 +1,9 @@
 import KanbanBoard from '@/components/KanbanBoard';
-
-async function loadJson(path) {
-  const base = process.env.NEXT_PUBLIC_BASE_URL || '';
-  const res = await fetch(`${base}${path}`, { cache: 'no-store' });
-  return res.json();
-}
+import { getOverview, getKanban } from '@/lib/openclaw';
 
 export default async function Home() {
-  const [overviewPayload, kanbanPayload] = await Promise.all([
-    loadJson('/api/overview'),
-    loadJson('/api/kanban')
-  ]);
-
-  const data = overviewPayload?.data || { agents: [], columns: {}, cardCount: 0, activeSubagentsExpected: 0 };
-  const kanban = kanbanPayload?.data || { columns: { backlog: [], in_progress: [], review: [], done: [] } };
+  const data = await getOverview();
+  const kanban = getKanban();
 
   return (
     <main className="container">

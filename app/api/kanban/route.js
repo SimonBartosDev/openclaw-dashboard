@@ -14,9 +14,10 @@ export async function GET() {
 
 export async function POST(req) {
   try {
+    const allowLocalWrites = process.env.DASHBOARD_ALLOW_LOCAL_WRITES === 'true';
     const requiredKey = process.env.DASHBOARD_WRITE_KEY;
     const provided = req.headers.get('x-write-key');
-    if (!requiredKey || !provided || provided !== requiredKey) {
+    if (!allowLocalWrites && (!requiredKey || !provided || provided !== requiredKey)) {
       return NextResponse.json({ ok: false, error: 'Unauthorized write' }, { status: 401 });
     }
 

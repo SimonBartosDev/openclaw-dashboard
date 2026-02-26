@@ -1,12 +1,14 @@
 import KanbanBoard from '@/components/KanbanBoard';
 import DashboardShell from '@/components/layout/DashboardShell';
-import { getOverview, getKanban } from '@/lib/openclaw';
+import MissionControlLive from '@/components/MissionControlLive';
+import { getOverview, getKanban, getRuntimeSnapshot } from '@/lib/openclaw';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   const data = await getOverview();
   const kanban = getKanban();
+  const runtime = getRuntimeSnapshot();
   const activity = (kanban.activity || []).slice(0, 8);
 
   return (
@@ -34,6 +36,8 @@ export default async function Home() {
             <div className="kpi">{data.cardCount}</div>
           </div>
         </section>
+
+        <MissionControlLive initial={runtime} />
 
         <section className="grid2" style={{ marginBottom: 16 }}>
           <div className="card">

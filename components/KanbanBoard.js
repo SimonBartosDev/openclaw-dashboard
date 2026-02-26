@@ -20,19 +20,25 @@ export default function KanbanBoard({ initial }) {
   const [title, setTitle] = useState('');
   const [owner, setOwner] = useState('Builder');
   const [dragging, setDragging] = useState(null);
+  const [selected, setSelected] = useState({});
+  const [writeKey, setWriteKey] = useState(typeof window !== 'undefined' ? localStorage.getItem('dash_write_key') || '' : '');
 
   const cards = useMemo(() => Object.values(board.columns || {}).flat().length, [board]);
+  const selectedCount = Object.keys(selected).filter((k) => selected[k]).length;
 
   async function persist(next, logText) {
     setSaving(true);
     if (!next.activity) next.activity = [];
     if (logText) next.activity = [{ ts: Date.now(), text: logText }, ...next.activity].slice(0, 30);
     setBoard(next);
-    await fetch('/api/kanban', {
+    const res = await fetch('/api/kanban', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-write-key': writeKey || '' },
       body: JSON.stringify(next)
     });
+    if (!res.ok) {
+      alert('Write blocked: set Dashboard Write Key first.');
+    }
     setSaving(false);
   }
 
@@ -50,6 +56,26 @@ export default function KanbanBoard({ initial }) {
       }
     };
     persist(next, `${nextCard.title} moved ${TITLES[from]} → ${TITLES[to]}`);
+  }
+
+  function bulkMove(to) {
+    const selectedIds = new Set(Object.keys(selected).filter((k) => selected[k]));
+    if (selectedIds.size === 0) return;
+    const next = { ...board, columns: {} };
+    for (const col of Object.keys(TITLES)) {
+      next.columns[col] = [];
+    }
+    for (const col of Object.keys(TITLES)) {
+      for (const card of board.columns[col]) {
+        if (selectedIds.has(card.id)) {
+          next.columns[to].push({ ...card, status: to });
+        } else {
+          next.columns[col].push(card);
+        }
+      }
+    }
+    setSelected({});
+    persist(next, `${selectedIds.size} selected task(s) moved to ${TITLES[to]}`);
   }
 
   function addTask() {
@@ -75,6 +101,9 @@ export default function KanbanBoard({ initial }) {
         [col]: board.columns[col].filter((c) => c.id !== cardId)
       }
     };
+    const copy = { ...selected };
+    delete copy[cardId];
+    setSelected(copy);
     persist(next, `Task deleted: ${card?.title || cardId}`);
   }
 
@@ -97,7 +126,7 @@ export default function KanbanBoard({ initial }) {
   return (
     <div>
       <div className="row" style={{ marginBottom: 10 }}>
-        <h3 style={{ margin: 0 }}>Team Kanban v2</h3>
+        <h3 style={{ margin: 0 }}>Team Kanban v3</h3>
         <span className="muted">{saving ? 'saving…' : `saved · ${cards} cards`}</span>
       </div>
 
@@ -107,7 +136,10 @@ export default function KanbanBoard({ initial }) {
           <select value={owner} onChange={(e) => setOwner(e.target.value)} style={{ background:'#0f1730', color:'#dbe7ff', border:'1px solid #35508a', borderRadius:8, padding:'8px 10px' }}>
             {OWNERS.map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
-          <button onClick={addTask} style={{ background:'#1f5ed8', color:'white', border:0, borderRadius:8, padding:'8px 12px', cursor:'pointer' }}>+ Add Task</button>
+          <button className="btn primary" onClick={addTask}>+ Add Task</button>
+          <input value={writeKey} onChange={(e) => { setWriteKey(e.target.value); if (typeof window !== 'undefined') localStorage.setItem('dash_write_key', e.target.value); }} placeholder="Dashboard write key" style={{ minWidth: 220, background:'#0f1730', color:'#dbe7ff', border:'1px solid #35508a', borderRadius:8, padding:'8px 10px' }} />
+          <button className="btn" onClick={() => bulkMove('review')} disabled={selectedCount === 0}>Send selected to Review</button>
+          <button className="btn" onClick={() => bulkMove('done')} disabled={selectedCount === 0}>Mark selected Done</button>
         </div>
       </div>
 
@@ -126,13 +158,16 @@ export default function KanbanBoard({ initial }) {
             <ul className="clean">
               {(board.columns[col] || []).map((card) => (
                 <li key={card.id} draggable onDragStart={() => setDragging({ cardId: card.id, from: col })}>
-                  <div><strong>{card.title}</strong></div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input type="checkbox" checked={!!selected[card.id]} onChange={(e) => setSelected({ ...selected, [card.id]: e.target.checked })} />
+                    <strong>{card.title}</strong>
+                  </div>
                   <div className="muted">{card.owner}</div>
                   <div style={{ marginTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    <button onClick={() => editTask(col, card.id)} style={{ background:'#0f1730', border:'1px solid #2f4478', color:'#c9d8fb', borderRadius:8, padding:'4px 8px', cursor:'pointer' }}>Edit</button>
-                    <button onClick={() => deleteTask(col, card.id)} style={{ background:'#3b1322', border:'1px solid #7f2d49', color:'#ffc3d5', borderRadius:8, padding:'4px 8px', cursor:'pointer' }}>Delete</button>
-                    {col !== 'review' && <button onClick={() => move(card.id, col, 'review')} style={{ background:'#0f1730', border:'1px solid #2f4478', color:'#c9d8fb', borderRadius:8, padding:'4px 8px', cursor:'pointer' }}>Send to Review</button>}
-                    {col !== 'done' && <button onClick={() => move(card.id, col, 'done')} style={{ background:'#10321f', border:'1px solid #2e6e4c', color:'#b9ffd8', borderRadius:8, padding:'4px 8px', cursor:'pointer' }}>Mark Done</button>}
+                    <button className="btn" onClick={() => editTask(col, card.id)}>Edit</button>
+                    <button className="btn" onClick={() => deleteTask(col, card.id)} style={{ borderColor:'#7f2d49', color:'#ffc3d5' }}>Delete</button>
+                    {col !== 'review' && <button className="btn" onClick={() => move(card.id, col, 'review')}>Send to Review</button>}
+                    {col !== 'done' && <button className="btn" onClick={() => move(card.id, col, 'done')}>Mark Done</button>}
                   </div>
                 </li>
               ))}
@@ -143,7 +178,7 @@ export default function KanbanBoard({ initial }) {
 
       <div className="card" style={{ marginTop: 14 }}>
         <div className="row" style={{ marginBottom: 8 }}>
-          <strong>Activity feed</strong>
+          <strong>Workflow activity feed</strong>
           <span className="muted">latest 30</span>
         </div>
         <ul className="clean">
